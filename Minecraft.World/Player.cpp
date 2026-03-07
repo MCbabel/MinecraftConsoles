@@ -1015,7 +1015,8 @@ void Player::aiStep()
 	flyingSpeed = defaultFlySpeed;
 	if (isSprinting())
 	{
-		flyingSpeed += defaultFlySpeed;
+		bool javaFlight = abilities.flying && app.GetGameSettings(0, eGameSetting_JavaFlightControls) != 0;
+		flyingSpeed += defaultFlySpeed * (javaFlight ? 1.0f : 0.3f);
 	}
 
 	setSpeed((float) speed->getValue());
@@ -2082,7 +2083,8 @@ void Player::awardStat(Stat *stat, byteArray paramBlob)
 
 void Player::jumpFromGround()
 {
-	if (abilities.flying) return;
+	if (abilities.flying && app.GetGameSettings(0, eGameSetting_JavaFlightControls) != 0)
+		return;
 
 	LivingEntity::jumpFromGround();
 
@@ -2108,12 +2110,22 @@ void Player::travel(float xa, float ya)
 	{
 		double savedYd = yd;
 		float ofs = flyingSpeed;
-		flyingSpeed = abilities.getFlyingSpeed() * (isSprinting() ? 2 : 1);
-		bool wasOnGround = onGround;
-		onGround = false;
-		LivingEntity::travel(xa, ya);
-		onGround = wasOnGround;
-		yd = savedYd * 0.6;
+		bool javaFlight = app.GetGameSettings(0, eGameSetting_JavaFlightControls) != 0;
+		if (javaFlight)
+		{
+			flyingSpeed = abilities.getFlyingSpeed() * (isSprinting() ? 2 : 1);
+			bool wasOnGround = onGround;
+			onGround = false;
+			LivingEntity::travel(xa, ya);
+			onGround = wasOnGround;
+			yd = savedYd * 0.6;
+		}
+		else
+		{
+			flyingSpeed = abilities.getFlyingSpeed();
+			LivingEntity::travel(xa, ya);
+			yd = savedYd * 0.6;
+		}
 		flyingSpeed = ofs;
 	}
 	else

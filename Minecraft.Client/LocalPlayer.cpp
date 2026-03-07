@@ -252,7 +252,8 @@ void LocalPlayer::aiStep()
 	bool forwardEnoughToContinueSprint = input->ya >= runTreshold;
 
 	// 4J - altered this slightly to make sure that the joypad returns to below returnTreshold in between registering two movements up to runThreshold
-	if ((onGround || abilities.flying) && !isSprinting() && enoughFoodToSprint && !isUsingItem() && !hasEffect(MobEffect::blindness))
+	bool javaFlight = app.GetGameSettings(m_iPad, eGameSetting_JavaFlightControls) != 0;
+	if ((onGround || (javaFlight && abilities.flying)) && !isSprinting() && enoughFoodToSprint && !isUsingItem() && !hasEffect(MobEffect::blindness))
 	{
 		if( !wasRunning && forwardEnoughToTriggerSprint )
 		{
@@ -278,7 +279,7 @@ void LocalPlayer::aiStep()
 	}
 	if (isSneaking()) sprintTriggerTime = 0;
 #ifdef _WINDOWS64
-	if (input->sprinting && (onGround || abilities.flying) && enoughFoodToSprint && !isUsingItem() && !hasEffect(MobEffect::blindness) && !isSneaking())
+	if (input->sprinting && (onGround || (javaFlight && abilities.flying)) && enoughFoodToSprint && !isUsingItem() && !hasEffect(MobEffect::blindness) && !isSneaking())
 	{
 		setSprinting(true);
 	}
@@ -333,10 +334,20 @@ void LocalPlayer::aiStep()
 
 	if (abilities.flying)
 	{
-		if (ullButtonsPressed & (1LL<<MINECRAFT_ACTION_SNEAK_TOGGLE) ) yd -= 0.15f;
-		if (input->jumping)
+		if (javaFlight)
 		{
-			yd += 0.15f;
+			if (ullButtonsPressed & (1LL<<MINECRAFT_ACTION_SNEAK_TOGGLE) ) yd -= 0.15f;
+			if (input->jumping) yd += 0.15f;
+		}
+		else
+		{
+			// 4J - note that the 0.42 added for going down is to make it match with what happens when you jump - jumping itself adds 0.42 to yd in Mob::jumpFromGround
+			if (ullButtonsPressed & (1LL<<MINECRAFT_ACTION_SNEAK_TOGGLE) ) yd -= ( 0.15 + 0.42 );
+			if (input->jumping)
+			{
+				noJumpDelay = 0;
+				yd += 0.15;
+			}
 		}
 
 		// snap y rotation to nearest 90 degree axis aligned value
@@ -431,22 +442,50 @@ void LocalPlayer::aiStep()
 		else
 #endif
 		{
-			flyX = 0.0f;
-			flyY = 0.0f;
-			flyZ = 0.0f;
-			if( ullDpad_filtered & (1LL<<MINECRAFT_ACTION_DPAD_UP))
+			if (javaFlight)
 			{
-				flyY = 0.1f;
+				// Java Edition style: no sprint-fly viewVector overlay, simple dpad up/down
+				flyX = 0.0f;
+				flyY = 0.0f;
+				flyZ = 0.0f;
+				if( ullDpad_filtered & (1LL<<MINECRAFT_ACTION_DPAD_UP))
+					flyY = 0.1f;
+				if( ullDpad_filtered & (1LL<<MINECRAFT_ACTION_DPAD_DOWN))
+					flyY = -0.1f;
 			}
-			if( ullDpad_filtered & (1LL<<MINECRAFT_ACTION_DPAD_DOWN))
+			else
 			{
-				flyY = -0.1f;
+				if( isSprinting() )
+				{
+					// 4J: Accelrate up to full speed if we are sprinting, moving in the direction of the view vector
+					flyX = (float)viewVector->x * input->ya;
+					flyY = (float)viewVector->y * input->ya;
+					flyZ = (float)viewVector->z * input->ya;
+
+					float scale = ((float)(SPRINT_DURATION - sprintTime))/10.0f;
+					scale = scale * scale;
+					if ( scale > 1.0f ) scale = 1.0f;
+					flyX *= scale;
+					flyY *= scale;
+					flyZ *= scale;
+				}
+				else
+				{
+					flyX = 0.0f;
+					flyY = 0.0f;
+					flyZ = 0.0f;
+					if( ullDpad_filtered & (1LL<<MINECRAFT_ACTION_DPAD_UP))
+						flyY = 0.1f;
+					if( ullDpad_filtered & (1LL<<MINECRAFT_ACTION_DPAD_DOWN))
+						flyY = -0.1f;
+				}
 			}
 		}
 
 		Player::move(flyX, flyY, flyZ);
 
 		fallDistance = 0.0f;
+		if (!javaFlight) yd = 0.0f;
 		onGround = true;
 	}
 
